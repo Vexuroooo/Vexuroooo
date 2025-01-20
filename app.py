@@ -1,12 +1,56 @@
-
 import streamlit as st
 import pandas as pd
 from datetime import datetime
 import os
 from github import Github
 
-# Fungsi untuk menghubungkan ke repositori GitHub
-def upload_to_github(file_path, repo_name, token, commit_message):
+# Inisialisasi data rental
+def load_data():
+    try:
+        data = pd.read_csv("rental_data.csv")
+    except FileNotFoundError:
+        data = pd.DataFrame(columns=["User", "E-Bike ID", "Start Time", "End Time", "Status"])
+        data.to_csv("rental_data.csv", index=False)
+    return data
+
+def save_data(data):
+    data.to_csv("rental_data.csv", index=False)
+
+# Fungsi untuk menyewa E-Bike
+def rent_bike(user, bike_id):
+    data = load_data()
+    if (data["E-Bike ID"] == bike_id).any() and (data["Status"] == "Rented").any():
+        return f"E-Bike {bike_id} is currently rented."
+    else:
+        new_entry = {
+            "User": user,
+            "E-Bike ID": bike_id,
+            "Start Time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "End Time": "",
+            "Status": "Rented"
+        }
+        data = data.append(new_entry, ignore_index=True)
+        save_data(data)
+        return f"E-Bike {bike_id} successfully rented by {user}."
+
+# Fungsi untuk mengembalikan E-Bike
+def return_bike(user, bike_id):
+    data = load_data()
+    if ((data["User"] == user) & (data["E-Bike ID"] == bike_id) & (data["Status"] == "Rented")).any():
+        data.loc[(data["User"] == user) & (data["E-Bike ID"] == bike_id), "End Time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        data.loc[(data["User"] == user) & (data["E-Bike ID"] == bike_id), "Status"] = "Returned"
+        save_data(data)
+        return f"E-Bike {bike_id} successfully returned by {user}."
+    else:
+        return f"No matching rental record found for E-Bike {bike_id} and user {user}."
+
+# Fungsi untuk melihat log rental
+def view_logs():
+    data = load_data()
+    return data
+
+# Fungsi untuk menghubungkan ke GitHub dan menyinkronkan data
+def sync_to_github(file_path, repo_name, token, commit_message):
     try:
         g = Github(token)
         repo = g.get_user().get_repo(repo_name)
@@ -22,16 +66,6 @@ def upload_to_github(file_path, repo_name, token, commit_message):
     except Exception as e:
         st.error(f"Error uploading to GitHub: {e}")
 
-# Inisialisasi data rental
-def load_data():
-    if os.path.exists("rental_data.csv"):
-        return pd.read_csv("rental_data.csv")
-    else:
-        return pd.DataFrame(columns=["User", "E-Bike ID", "Start Time", "End Time", "Status"])
-
-def save_data(data):
-    data.to_csv("rental_data.csv", index=False)
-
 # Streamlit UI
 st.title("E-Bike Rental Management System")
 
@@ -46,15 +80,7 @@ if menu == "Rent E-Bike":
     bike_id = st.text_input("Enter E-Bike ID")
     if st.button("Rent"):
         if user and bike_id:
-            data = data.append({
-                "User": user,
-                "E-Bike ID": bike_id,
-                "Start Time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "End Time": "",
-                "Status": "Rented"
-            }, ignore_index=True)
-            save_data(data)
-            st.success(f"E-Bike {bike_id} rented by {user}.")
+            st.success(rent_bike(user, bike_id))
         else:
             st.error("Please provide both name and E-Bike ID.")
 
@@ -64,13 +90,7 @@ elif menu == "Return E-Bike":
     bike_id = st.text_input("Enter E-Bike ID")
     if st.button("Return"):
         if user and bike_id:
-            if ((data["User"] == user) & (data["E-Bike ID"] == bike_id) & (data["Status"] == "Rented")).any():
-                data.loc[(data["User"] == user) & (data["E-Bike ID"] == bike_id), "End Time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                data.loc[(data["User"] == user) & (data["E-Bike ID"] == bike_id), "Status"] = "Returned"
-                save_data(data)
-                st.success(f"E-Bike {bike_id} returned by {user}.")
-            else:
-                st.error("No matching rental record found.")
+            st.success(return_bike(user, bike_id))
         else:
             st.error("Please provide both name and E-Bike ID.")
 
@@ -84,11 +104,6 @@ elif menu == "Sync to GitHub":
     token = st.text_input("Enter GitHub Personal Access Token", type="password")
     if st.button("Sync"):
         if repo_name and token:
-            upload_to_github("rental_data.csv", repo_name, token, "Update rental logs")
+            sync_to_github("rental_data.csv", repo_name, token, "Update rental logs")
         else:
             st.error("Please provide both repository name and token.")
-
-<!---
-Vexuroooo/Vexuroooo is a ✨ special ✨ repository because its `README.md` (this file) appears on your GitHub profile.
-You can click the Preview link to take a look at your changes.
---->
